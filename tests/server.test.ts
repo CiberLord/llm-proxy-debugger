@@ -531,12 +531,12 @@ describe("session structure", () => {
       const files = fs
         .readdirSync(path.join(harness.sessionsDir, "1", "requests", d))
         .sort();
-      expect(files).toEqual([
+      expect(files).toEqual(expect.arrayContaining([
         "raw_request.json",
         "raw_response.json",
         "request.json",
         "response.json",
-      ]);
+      ]));
     }
   });
 });

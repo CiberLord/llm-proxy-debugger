@@ -1,5 +1,8 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { IndexWriter } from "./index/writer";
+import { RunDetectionContext } from "./detect/context";
+import type { MetaJson } from "./timings";
 
 const DEFAULT_SESSIONS_DIR = path.resolve(process.cwd(), "sessions");
 
@@ -50,6 +53,8 @@ export class Session {
   readonly id: number;
   readonly dir: string;
   readonly requestsDir: string;
+  readonly indexWriter: IndexWriter;
+  readonly detectionContext: RunDetectionContext;
   private requestCounter = 0;
 
   constructor(baseDir: string = DEFAULT_SESSIONS_DIR) {
@@ -58,6 +63,8 @@ export class Session {
     this.dir = path.join(baseDir, String(this.id));
     this.requestsDir = path.join(this.dir, "requests");
     ensureDir(this.requestsDir);
+    this.indexWriter = new IndexWriter(this.dir);
+    this.detectionContext = new RunDetectionContext();
   }
 
   newRequest(): RequestLogger {
@@ -99,5 +106,9 @@ export class RequestLogger {
 
   writeResponse(log: CleanResponseLog): void {
     this.writeJson("response.json", log);
+  }
+
+  writeMeta(meta: MetaJson): void {
+    this.writeJson("meta.json", meta);
   }
 }

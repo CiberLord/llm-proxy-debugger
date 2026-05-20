@@ -9,6 +9,20 @@ import {
 } from "./converter/anthropic-to-openai";
 import { openAIToAnthropicResponse } from "./converter/openai-to-anthropic";
 import { createAnthropicStreamConverter } from "./converter/stream";
+import { Timings } from "./timings";
+import { runDetectors } from "./detect";
+import type { DetectionResult, NormalizedRequest } from "./detect/types";
+import type { IndexEntry, IndexTokenStats } from "./index/types";
+import {
+  normalizeAnthropicRequest,
+  normalizeOpenAIRequest,
+  extractAnthropicToolCalls,
+  extractOpenAIToolCalls,
+  extractAnthropicTokens,
+  extractOpenAITokens,
+  snippet,
+  toIndexToolCalls,
+} from "./instrument";
 
 const HOP_BY_HOP = new Set([
   "host",
@@ -124,6 +138,111 @@ interface HandleResult {
   subPath: string;
 }
 
+interface FinalizeArgs {
+  session: Session;
+  timings: Timings;
+  route: "anthropic" | "openai";
+  normalized: NormalizedRequest;
+  detection: DetectionResult;
+  upstreamStatus: number;
+  stream: boolean;
+  endpoint: string;
+  modelRequested: string;
+  modelRemapped: string;
+  assistantBody: unknown;
+  /** Which response shape `assistantBody` follows. */
+  responseShape: "anthropic" | "openai" | "none";
+  requestId: number;
+  concurrencyAtStart: number;
+  error?: string;
+}
+
+function finalizeIndex(args: FinalizeArgs): void {
+  const {
+    session,
+    timings,
+    route,
+    normalized,
+    detection,
+    upstreamStatus,
+    stream,
+    endpoint,
+    modelRequested,
+    modelRemapped,
+    assistantBody,
+    responseShape,
+    requestId,
+    concurrencyAtStart,
+    error,
+  } = args;
+
+  let toolCalls: Array<{ name: string; id?: string; input?: unknown }> = [];
+  let tokens: IndexTokenStats = {};
+  if (responseShape === "anthropic") {
+    toolCalls = extractAnthropicToolCalls(assistantBody);
+    tokens = extractAnthropicTokens(assistantBody);
+  } else if (responseShape === "openai") {
+    toolCalls = extractOpenAIToolCalls(assistantBody);
+    tokens = extractOpenAITokens(assistantBody);
+  }
+
+  // Record assistant tool_calls for future correlation, and register any Task spawns.
+  session.detectionContext.noteAssistantToolCalls(
+    normalized.conversationId,
+    toolCalls.map((t) => ({ name: t.name, input: t.input }))
+  );
+  for (const tc of toolCalls) {
+    if (tc.name === "Task") {
+      let subagentType: string | undefined;
+      if (tc.input && typeof tc.input === "object") {
+        const v = (tc.input as Record<string, unknown>).subagent_type;
+        if (typeof v === "string") subagentType = v;
+      }
+      session.detectionContext.registerPendingSpawn(
+        normalized.conversationId,
+        subagentType
+      );
+    }
+  }
+
+  const meta = timings.toMeta();
+  const entry: IndexEntry = {
+    request_id: requestId,
+    route,
+    endpoint,
+    started_at: meta.received_at,
+    ended_at: meta.responded_to_client_at,
+    duration_ms: meta.duration_ms,
+    ttfb_ms: meta.ttfb_ms,
+    status: upstreamStatus,
+    stream,
+    model_requested: modelRequested,
+    model_remapped_to: modelRemapped,
+    user_agent: normalized.userAgent,
+    client_app_hint: detection.client_app_hint,
+    tokens,
+    conversation_id: detection.conversation_id,
+    parent_conversation_id: detection.parent_conversation_id,
+    is_subagent: detection.is_subagent,
+    subagent_type: detection.subagent_type,
+    detection: {
+      confidence: detection.confidence,
+      signals: detection.signals,
+      detector: detection.detector,
+    },
+    first_user_snippet: snippet(normalized.firstUserText),
+    assistant_tool_calls: toIndexToolCalls(toolCalls),
+    concurrency_at_start: concurrencyAtStart,
+    error,
+  };
+
+  try {
+    session.indexWriter.append(entry);
+  } catch {
+    // ignore index write errors
+  }
+}
+
 function matchRoute(
   url: string,
   prefix: string
@@ -144,152 +263,225 @@ async function handleAnthropic(
   res: ServerResponse,
   sub: string,
   route: RouteConfig,
-  logger: RequestLogger
+  logger: RequestLogger,
+  session: Session
 ): Promise<void> {
-  const rawBody = await readBody(req);
-  const incomingText = rawBody.toString("utf8");
-  const incomingJson = parseJSONSafe(incomingText);
+  const timings = new Timings();
+  timings.mark("received_at");
+  const userAgent = (req.headers["user-agent"] as string | undefined) || undefined;
+  const concurrencyAtStart = session.detectionContext.snapshotConcurrency();
+  session.detectionContext.enterRequest();
 
-  logger.writeRequest({
-    url: req.url || "",
-    body: incomingJson,
-  });
+  let normalized: NormalizedRequest | undefined;
+  let detection: DetectionResult | undefined;
+  let upstreamStatus = 0;
+  let stream = false;
+  let modelRequestedFinal = "";
+  let modelRemappedFinal = "";
+  let assistantBodyForIndex: unknown = null;
+  let routeKindForIndex: "anthropic" | "openai-shape" = "anthropic";
+  let errorForIndex: string | undefined;
+  let endpointForIndex = "";
 
-  // Clients (e.g. Claude Code) may add query params like ?beta=true.
-  // Strip them for routing decisions, then forward them onto the upstream URL.
-  const { path: subPath, query: subQuery } = splitPathQuery(sub);
-  const isMessages = subPath.replace(/\/+$/, "") === "/messages";
+  try {
+    const rawBody = await readBody(req);
+    const incomingText = rawBody.toString("utf8");
+    const incomingJson = parseJSONSafe(incomingText);
 
-  const originalBody = incomingJson as AnthropicRequest | null;
-  const originalModel = originalBody?.model ?? "";
-  const remappedModel = originalModel
-    ? applyModelRemap(originalModel, route.target.modelsRemapping)
-    : originalModel;
-
-  let upstreamUrl: string;
-  let upstreamBody: unknown;
-  let stream = Boolean(
-    originalBody && typeof originalBody === "object" && originalBody.stream
-  );
-
-  if (isMessages && originalBody && typeof originalBody === "object") {
-    const converted = anthropicToOpenAIRequest({
-      ...originalBody,
-      model: remappedModel,
+    logger.writeRequest({
+      url: req.url || "",
+      body: incomingJson,
     });
-    // Drop subQuery — we're hitting a different upstream endpoint that doesn't
-    // understand Anthropic-specific params (e.g. ?beta=true).
-    void subQuery;
-    upstreamUrl = joinUrl(route.target.baseUrl, "/chat/completions");
-    upstreamBody = converted;
-  } else {
-    upstreamUrl = joinUrl(route.target.baseUrl, sub);
-    upstreamBody = incomingJson;
-  }
 
-  const upstreamHeaders = buildForwardHeaders(req.headers, route.target.apiKey);
-  const upstreamBodyText =
-    upstreamBody === null || upstreamBody === undefined
-      ? ""
-      : typeof upstreamBody === "string"
-        ? upstreamBody
-        : JSON.stringify(upstreamBody);
+    normalized = normalizeAnthropicRequest(incomingJson, userAgent);
+    session.detectionContext.touchConversation(normalized.conversationId);
+    detection = runDetectors(normalized, session.detectionContext);
 
-  logger.writeRawRequest({
-    url: upstreamUrl,
-    method: req.method || "POST",
-    headers: upstreamHeaders,
-    body:
-      typeof upstreamBody === "string"
-        ? upstreamBody
-        : upstreamBody ?? null,
-  });
+    // Clients (e.g. Claude Code) may add query params like ?beta=true.
+    // Strip them for routing decisions, then forward them onto the upstream URL.
+    const { path: subPath, query: subQuery } = splitPathQuery(sub);
+    const isMessages = subPath.replace(/\/+$/, "") === "/messages";
+    endpointForIndex = subPath;
 
-  const upstream = await fetch(upstreamUrl, {
-    method: req.method || "POST",
-    headers: upstreamHeaders,
-    body: upstreamBodyText || undefined,
-  });
+    const originalBody = incomingJson as AnthropicRequest | null;
+    const originalModel = originalBody?.model ?? "";
+    const remappedModel = originalModel
+      ? applyModelRemap(originalModel, route.target.modelsRemapping)
+      : originalModel;
+    modelRequestedFinal = originalModel;
+    modelRemappedFinal = remappedModel;
 
-  const upstreamHeadersObj = fetchHeadersToObject(upstream.headers);
-  const contentType = upstream.headers.get("content-type") || "";
+    let upstreamUrl: string;
+    let upstreamBody: unknown;
+    stream = Boolean(
+      originalBody && typeof originalBody === "object" && originalBody.stream
+    );
 
-  if (stream && upstream.ok && contentType.includes("text/event-stream")) {
-    res.statusCode = 200;
-    res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
-    res.setHeader("Cache-Control", "no-cache");
-    res.setHeader("Connection", "keep-alive");
-
-    const messageId = `msg_${logger.sessionId}_${logger.requestId}_${Date.now()}`;
-    const conv = createAnthropicStreamConverter(messageId, originalModel);
-
-    const reader = upstream.body!.getReader();
-    const decoder = new TextDecoder();
-    let rawAccum = "";
-
-    for (;;) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      const text = decoder.decode(value, { stream: true });
-      rawAccum += text;
-      const out = conv.feed(text);
-      if (out) res.write(out);
+    if (isMessages && originalBody && typeof originalBody === "object") {
+      const converted = anthropicToOpenAIRequest({
+        ...originalBody,
+        model: remappedModel,
+      });
+      // Drop subQuery — we're hitting a different upstream endpoint that doesn't
+      // understand Anthropic-specific params (e.g. ?beta=true).
+      void subQuery;
+      upstreamUrl = joinUrl(route.target.baseUrl, "/chat/completions");
+      upstreamBody = converted;
+      routeKindForIndex = "openai-shape";
+    } else {
+      upstreamUrl = joinUrl(route.target.baseUrl, sub);
+      upstreamBody = incomingJson;
     }
-    const trailing = conv.end();
-    if (trailing) res.write(trailing);
-    res.end();
 
+    const upstreamHeaders = buildForwardHeaders(req.headers, route.target.apiKey);
+    const upstreamBodyText =
+      upstreamBody === null || upstreamBody === undefined
+        ? ""
+        : typeof upstreamBody === "string"
+          ? upstreamBody
+          : JSON.stringify(upstreamBody);
+
+    logger.writeRawRequest({
+      url: upstreamUrl,
+      method: req.method || "POST",
+      headers: upstreamHeaders,
+      body:
+        typeof upstreamBody === "string"
+          ? upstreamBody
+          : upstreamBody ?? null,
+    });
+
+    timings.mark("upstream_sent_at");
+    const upstream = await fetch(upstreamUrl, {
+      method: req.method || "POST",
+      headers: upstreamHeaders,
+      body: upstreamBodyText || undefined,
+    });
+
+    const upstreamHeadersObj = fetchHeadersToObject(upstream.headers);
+    const contentType = upstream.headers.get("content-type") || "";
+    upstreamStatus = upstream.status;
+
+    if (stream && upstream.ok && contentType.includes("text/event-stream")) {
+      res.statusCode = 200;
+      res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+
+      const messageId = `msg_${logger.sessionId}_${logger.requestId}_${Date.now()}`;
+      const conv = createAnthropicStreamConverter(messageId, originalModel);
+
+      const reader = upstream.body!.getReader();
+      const decoder = new TextDecoder();
+      let rawAccum = "";
+
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        const text = decoder.decode(value, { stream: true });
+        if (text.length > 0) timings.mark("upstream_first_byte_at");
+        rawAccum += text;
+        const out = conv.feed(text);
+        if (out) res.write(out);
+      }
+      timings.mark("upstream_done_at");
+      const trailing = conv.end();
+      if (trailing) res.write(trailing);
+      res.end();
+      timings.mark("responded_to_client_at");
+
+      logger.writeRawResponse({
+        status: upstream.status,
+        headers: upstreamHeadersObj,
+        body: rawAccum,
+      });
+      const finalResp = conv.finalResponse();
+      logger.writeResponse({
+        status: upstream.status,
+        body: finalResp,
+      });
+      assistantBodyForIndex = finalResp;
+      return;
+    }
+
+    timings.mark("upstream_first_byte_at");
+    const text = await upstream.text();
+    timings.mark("upstream_done_at");
     logger.writeRawResponse({
       status: upstream.status,
       headers: upstreamHeadersObj,
-      body: rawAccum,
+      body: text || null,
     });
-    logger.writeResponse({
-      status: upstream.status,
-      body: conv.finalResponse(),
-    });
-    return;
-  }
 
-  const text = await upstream.text();
-  logger.writeRawResponse({
-    status: upstream.status,
-    headers: upstreamHeadersObj,
-    body: text || null,
-  });
-
-  if (upstream.ok && isMessages) {
-    const oaiResp = parseJSONSafe(text);
-    let anthResp: unknown = null;
-    if (oaiResp && typeof oaiResp === "object") {
-      try {
-        anthResp = openAIToAnthropicResponse(oaiResp as never, originalModel);
-      } catch {
-        anthResp = oaiResp;
+    if (upstream.ok && isMessages) {
+      const oaiResp = parseJSONSafe(text);
+      let anthResp: unknown = null;
+      if (oaiResp && typeof oaiResp === "object") {
+        try {
+          anthResp = openAIToAnthropicResponse(oaiResp as never, originalModel);
+        } catch {
+          anthResp = oaiResp;
+        }
       }
+      res.statusCode = 200;
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify(anthResp));
+      timings.mark("responded_to_client_at");
+      logger.writeResponse({ status: upstream.status, body: anthResp });
+      assistantBodyForIndex = anthResp;
+      return;
     }
-    res.statusCode = 200;
-    res.setHeader("Content-Type", "application/json");
-    res.end(JSON.stringify(anthResp));
-    logger.writeResponse({ status: upstream.status, body: anthResp });
-    return;
-  }
 
-  // Non-200 or non-messages: pass through.
-  res.statusCode = upstream.status;
-  res.setHeader(
-    "Content-Type",
-    upstream.headers.get("content-type") || "application/json"
-  );
-  res.end(text);
-  logger.writeResponse({
-    status: upstream.status,
-    body: text
+    // Non-200 or non-messages: pass through.
+    res.statusCode = upstream.status;
+    res.setHeader(
+      "Content-Type",
+      upstream.headers.get("content-type") || "application/json"
+    );
+    res.end(text);
+    timings.mark("responded_to_client_at");
+    const parsed = text
       ? contentType.includes("text/event-stream")
         ? parseSSE(text)
         : parseJSONSafe(text)
-      : null,
-  });
+      : null;
+    logger.writeResponse({
+      status: upstream.status,
+      body: parsed,
+    });
+    assistantBodyForIndex = parsed;
+  } catch (err) {
+    errorForIndex = err instanceof Error ? err.message : String(err);
+    throw err;
+  } finally {
+    session.detectionContext.exitRequest();
+    if (!timings.get("responded_to_client_at")) timings.mark("responded_to_client_at");
+    try {
+      logger.writeMeta(timings.toMeta());
+    } catch {
+      // ignore meta write errors
+    }
+    if (normalized && detection) {
+      finalizeIndex({
+        session,
+        timings,
+        route: "anthropic",
+        normalized,
+        detection,
+        upstreamStatus,
+        stream,
+        endpoint: endpointForIndex || sub,
+        modelRequested: modelRequestedFinal,
+        modelRemapped: modelRemappedFinal,
+        assistantBody: assistantBodyForIndex,
+        responseShape: "anthropic",
+        requestId: logger.requestId,
+        concurrencyAtStart,
+        error: errorForIndex,
+      });
+    }
+  }
+  void routeKindForIndex;
 }
 
 async function handleOpenAI(
@@ -297,114 +489,184 @@ async function handleOpenAI(
   res: ServerResponse,
   sub: string,
   route: RouteConfig,
-  logger: RequestLogger
+  logger: RequestLogger,
+  session: Session
 ): Promise<void> {
-  const rawBody = await readBody(req);
-  const incomingText = rawBody.toString("utf8");
-  const incomingJson = parseJSONSafe(incomingText);
+  const timings = new Timings();
+  timings.mark("received_at");
+  const userAgent = (req.headers["user-agent"] as string | undefined) || undefined;
+  const concurrencyAtStart = session.detectionContext.snapshotConcurrency();
+  session.detectionContext.enterRequest();
 
-  logger.writeRequest({
-    url: req.url || "",
-    body: incomingJson,
-  });
-
-  let upstreamBody: unknown = incomingJson;
+  let normalized: NormalizedRequest | undefined;
+  let detection: DetectionResult | undefined;
+  let upstreamStatus = 0;
   let stream = false;
-  if (
-    incomingJson &&
-    typeof incomingJson === "object" &&
-    !Array.isArray(incomingJson)
-  ) {
-    const obj = { ...(incomingJson as Record<string, unknown>) };
-    const m = obj.model;
-    if (typeof m === "string") {
-      obj.model = applyModelRemap(m, route.target.modelsRemapping);
+  let modelRequestedFinal = "";
+  let modelRemappedFinal = "";
+  let assistantBodyForIndex: unknown = null;
+  let responseShapeForIndex: "anthropic" | "openai" | "none" = "none";
+  let errorForIndex: string | undefined;
+
+  try {
+    const rawBody = await readBody(req);
+    const incomingText = rawBody.toString("utf8");
+    const incomingJson = parseJSONSafe(incomingText);
+
+    logger.writeRequest({
+      url: req.url || "",
+      body: incomingJson,
+    });
+
+    normalized = normalizeOpenAIRequest(incomingJson, userAgent);
+    session.detectionContext.touchConversation(normalized.conversationId);
+    detection = runDetectors(normalized, session.detectionContext);
+
+    let upstreamBody: unknown = incomingJson;
+    if (
+      incomingJson &&
+      typeof incomingJson === "object" &&
+      !Array.isArray(incomingJson)
+    ) {
+      const obj = { ...(incomingJson as Record<string, unknown>) };
+      const m = obj.model;
+      if (typeof m === "string") {
+        modelRequestedFinal = m;
+        obj.model = applyModelRemap(m, route.target.modelsRemapping);
+        modelRemappedFinal =
+          typeof obj.model === "string" ? obj.model : modelRequestedFinal;
+      }
+      // Modern OpenAI-compatible models require `max_completion_tokens`.
+      if (obj.max_tokens !== undefined && obj.max_completion_tokens === undefined) {
+        obj.max_completion_tokens = obj.max_tokens;
+        delete obj.max_tokens;
+      }
+      stream = obj.stream === true;
+      upstreamBody = obj;
     }
-    // Modern OpenAI-compatible models require `max_completion_tokens`.
-    if (obj.max_tokens !== undefined && obj.max_completion_tokens === undefined) {
-      obj.max_completion_tokens = obj.max_tokens;
-      delete obj.max_tokens;
+
+    const upstreamUrl = joinUrl(route.target.baseUrl, sub);
+    const upstreamHeaders = buildForwardHeaders(req.headers, route.target.apiKey);
+    const upstreamBodyText =
+      upstreamBody === null || upstreamBody === undefined
+        ? ""
+        : typeof upstreamBody === "string"
+          ? upstreamBody
+          : JSON.stringify(upstreamBody);
+
+    logger.writeRawRequest({
+      url: upstreamUrl,
+      method: req.method || "POST",
+      headers: upstreamHeaders,
+      body:
+        typeof upstreamBody === "string" ? upstreamBody : upstreamBody ?? null,
+    });
+
+    timings.mark("upstream_sent_at");
+    const upstream = await fetch(upstreamUrl, {
+      method: req.method || "POST",
+      headers: upstreamHeaders,
+      body: upstreamBodyText || undefined,
+    });
+
+    const upstreamHeadersObj = fetchHeadersToObject(upstream.headers);
+    const contentType = upstream.headers.get("content-type") || "";
+    upstreamStatus = upstream.status;
+
+    if (stream && upstream.ok && contentType.includes("text/event-stream")) {
+      res.statusCode = 200;
+      res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+
+      const reader = upstream.body!.getReader();
+      const decoder = new TextDecoder();
+      let rawAccum = "";
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        const text = decoder.decode(value, { stream: true });
+        if (text.length > 0) timings.mark("upstream_first_byte_at");
+        rawAccum += text;
+        res.write(text);
+      }
+      timings.mark("upstream_done_at");
+      res.end();
+      timings.mark("responded_to_client_at");
+      logger.writeRawResponse({
+        status: upstream.status,
+        headers: upstreamHeadersObj,
+        body: rawAccum,
+      });
+      const parsedSSE = parseSSE(rawAccum);
+      logger.writeResponse({
+        status: upstream.status,
+        body: parsedSSE,
+      });
+      // OpenAI streaming token/tool_call extraction skipped in v1.
+      return;
     }
-    stream = obj.stream === true;
-    upstreamBody = obj;
-  }
 
-  const upstreamUrl = joinUrl(route.target.baseUrl, sub);
-  const upstreamHeaders = buildForwardHeaders(req.headers, route.target.apiKey);
-  const upstreamBodyText =
-    upstreamBody === null || upstreamBody === undefined
-      ? ""
-      : typeof upstreamBody === "string"
-        ? upstreamBody
-        : JSON.stringify(upstreamBody);
-
-  logger.writeRawRequest({
-    url: upstreamUrl,
-    method: req.method || "POST",
-    headers: upstreamHeaders,
-    body:
-      typeof upstreamBody === "string" ? upstreamBody : upstreamBody ?? null,
-  });
-
-  const upstream = await fetch(upstreamUrl, {
-    method: req.method || "POST",
-    headers: upstreamHeaders,
-    body: upstreamBodyText || undefined,
-  });
-
-  const upstreamHeadersObj = fetchHeadersToObject(upstream.headers);
-  const contentType = upstream.headers.get("content-type") || "";
-
-  if (stream && upstream.ok && contentType.includes("text/event-stream")) {
-    res.statusCode = 200;
-    res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
-    res.setHeader("Cache-Control", "no-cache");
-    res.setHeader("Connection", "keep-alive");
-
-    const reader = upstream.body!.getReader();
-    const decoder = new TextDecoder();
-    let rawAccum = "";
-    for (;;) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      const text = decoder.decode(value, { stream: true });
-      rawAccum += text;
-      res.write(text);
-    }
-    res.end();
+    timings.mark("upstream_first_byte_at");
+    const text = await upstream.text();
+    timings.mark("upstream_done_at");
     logger.writeRawResponse({
       status: upstream.status,
       headers: upstreamHeadersObj,
-      body: rawAccum,
+      body: text || null,
     });
-    logger.writeResponse({
-      status: upstream.status,
-      body: parseSSE(rawAccum),
-    });
-    return;
-  }
 
-  const text = await upstream.text();
-  logger.writeRawResponse({
-    status: upstream.status,
-    headers: upstreamHeadersObj,
-    body: text || null,
-  });
-
-  res.statusCode = upstream.status;
-  res.setHeader(
-    "Content-Type",
-    upstream.headers.get("content-type") || "application/json"
-  );
-  res.end(text);
-  logger.writeResponse({
-    status: upstream.status,
-    body: text
+    res.statusCode = upstream.status;
+    res.setHeader(
+      "Content-Type",
+      upstream.headers.get("content-type") || "application/json"
+    );
+    res.end(text);
+    timings.mark("responded_to_client_at");
+    const parsed = text
       ? contentType.includes("text/event-stream")
         ? parseSSE(text)
         : parseJSONSafe(text)
-      : null,
-  });
+      : null;
+    logger.writeResponse({
+      status: upstream.status,
+      body: parsed,
+    });
+    if (upstream.ok && !contentType.includes("text/event-stream")) {
+      assistantBodyForIndex = parsed;
+      responseShapeForIndex = "openai";
+    }
+  } catch (err) {
+    errorForIndex = err instanceof Error ? err.message : String(err);
+    throw err;
+  } finally {
+    session.detectionContext.exitRequest();
+    if (!timings.get("responded_to_client_at")) timings.mark("responded_to_client_at");
+    try {
+      logger.writeMeta(timings.toMeta());
+    } catch {
+      // ignore meta write errors
+    }
+    if (normalized && detection) {
+      finalizeIndex({
+        session,
+        timings,
+        route: "openai",
+        normalized,
+        detection,
+        upstreamStatus,
+        stream,
+        endpoint: sub,
+        modelRequested: modelRequestedFinal,
+        modelRemapped: modelRemappedFinal,
+        assistantBody: assistantBodyForIndex,
+        responseShape: responseShapeForIndex,
+        requestId: logger.requestId,
+        concurrencyAtStart,
+        error: errorForIndex,
+      });
+    }
+  }
 }
 
 export interface CreateServerOptions {
@@ -444,7 +706,7 @@ export function createServer(
             `[session ${logger.sessionId} req ${logger.requestId}] ${req.method} ${url} → anthropic`
           );
         }
-        await handleAnthropic(req, res, a.subPath, config.proxy.anthropic, logger);
+        await handleAnthropic(req, res, a.subPath, config.proxy.anthropic, logger, session);
         return;
       }
       const o = matchRoute(url, openaiPrefix);
@@ -455,7 +717,7 @@ export function createServer(
             `[session ${logger.sessionId} req ${logger.requestId}] ${req.method} ${url} → openai`
           );
         }
-        await handleOpenAI(req, res, o.subPath, config.proxy.openai, logger);
+        await handleOpenAI(req, res, o.subPath, config.proxy.openai, logger, session);
         return;
       }
       res.statusCode = 404;
