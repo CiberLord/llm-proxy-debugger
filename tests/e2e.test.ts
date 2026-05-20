@@ -181,10 +181,13 @@ describe("OpenAI SDK → OpenAI route", () => {
   });
 
   it("propagates upstream 429 as-is through the SDK", async () => {
-    fetchMock.mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({ error: { message: "rate limited", type: "rate_limit_error" } }),
-        { status: 429, headers: { "content-type": "application/json" } }
+    // OpenAI SDK auto-retries 429s — return a fresh Response on every call.
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({ error: { message: "rate limited", type: "rate_limit_error" } }),
+          { status: 429, headers: { "content-type": "application/json" } }
+        )
       )
     );
 

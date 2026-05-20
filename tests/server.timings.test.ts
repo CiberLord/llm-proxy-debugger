@@ -158,7 +158,7 @@ describe("server observability", () => {
   });
 
   it("uses the same conversation_id for two requests with same system+first user", async () => {
-    fetchMock.mockResolvedValue(jsonResp(makeOpenAIResp("ok")));
+    fetchMock.mockImplementation(() => Promise.resolve(jsonResp(makeOpenAIResp("ok"))));
 
     const send = () =>
       clientFetch(`${harness.baseUrl}/anthropic/v1/messages`, {
