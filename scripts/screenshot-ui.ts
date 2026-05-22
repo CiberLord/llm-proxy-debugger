@@ -61,9 +61,9 @@ async function main(): Promise<void> {
   });
 
   const shots: Shot[] = [
-    { name: "01-sessions", url: "/", waitFor: "text=Сессии" },
-    { name: "02-session-overview", url: "/session/1", waitFor: "text=Агентский цикл" },
-    { name: "03-request-normalized", url: "/session/1/request/1", waitFor: "text=Системный промпт" },
+    { name: "01-sessions", url: "/", waitFor: "text=Sessions" },
+    { name: "02-session-overview", url: "/session/1", waitFor: "text=Agentic loop" },
+    { name: "03-request-normalized", url: "/session/1/request/1", waitFor: "text=System prompt" },
   ];
 
   for (const shot of shots) {

@@ -12,25 +12,6 @@ export function StatusChip({ status }: { status: number }) {
   );
 }
 
-/** Detection confidence badge. */
-export function ConfidenceChip({
-  confidence,
-}: {
-  confidence: "strong" | "medium" | "weak";
-}) {
-  const color: ChipColor =
-    confidence === "strong"
-      ? "success"
-      : confidence === "medium"
-        ? "warning"
-        : "default";
-  return (
-    <Chip color={color} variant="soft" size="sm">
-      {confidence}
-    </Chip>
-  );
-}
-
 /** API surface the request used. */
 export function RouteChip({ route }: { route: "anthropic" | "openai" }) {
   return (

@@ -17,7 +17,6 @@ const step: OverviewStep = {
   ttfbMs: 300,
   tokens: { input: 1200, output: 90 },
   toolCalls: [{ name: "Task", id: "t1" }],
-  spawnsSubagent: true,
   startFrac: 0,
   endFrac: 0.22,
 };

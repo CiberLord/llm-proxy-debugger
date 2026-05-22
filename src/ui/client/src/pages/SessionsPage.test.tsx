@@ -31,7 +31,7 @@ describe("SessionsPage", () => {
         <SessionsPage />
       </MemoryRouter>
     );
-    expect(await screen.findByText("Сессия #1")).toBeInTheDocument();
+    expect(await screen.findByText("Session #1")).toBeInTheDocument();
     expect(screen.getByText("claude-code")).toBeInTheDocument();
     expect(screen.getByText("claude-sonnet-4-6")).toBeInTheDocument();
   });
@@ -47,7 +47,7 @@ describe("SessionsPage", () => {
       </MemoryRouter>
     );
     expect(
-      await screen.findByText("Нет сохранённых сессий.")
+      await screen.findByText("No recorded sessions.")
     ).toBeInTheDocument();
   });
 });

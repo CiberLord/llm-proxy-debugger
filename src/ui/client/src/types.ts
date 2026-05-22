@@ -123,26 +123,15 @@ export interface OverviewStep {
   ttfbMs?: number;
   tokens: IndexTokenStats;
   toolCalls: { name: string; id?: string }[];
-  spawnsSubagent: boolean;
   startFrac: number;
   endFrac: number;
 }
 
 export interface OverviewNode {
   conversationId: string;
-  parentConversationId?: string;
-  isSubagent: boolean;
-  subagentType?: string;
   detector: string;
-  confidence: "strong" | "medium" | "weak";
   firstUserSnippet: string;
   steps: OverviewStep[];
-  childGroups: ChildGroup[];
-}
-
-export interface ChildGroup {
-  mode: "parallel" | "sequential";
-  children: OverviewNode[];
 }
 
 export interface SessionDetail {

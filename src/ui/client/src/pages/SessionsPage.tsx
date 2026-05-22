@@ -14,19 +14,19 @@ function SessionCard({ session }: { session: SessionSummary }) {
       <Card variant="default" className="h-full transition hover:shadow-overlay">
         <Card.Content className="flex flex-col gap-3 p-4">
           <div className="flex items-center justify-between">
-            <span className="text-lg font-bold">Сессия #{session.id}</span>
+            <span className="text-lg font-bold">Session #{session.id}</span>
             {session.errorCount > 0 && (
-              <TagChip color="danger">{session.errorCount} ошибок</TagChip>
+              <TagChip color="danger">{session.errorCount} errors</TagChip>
             )}
           </div>
           <div className="text-xs text-muted">
             {fmtDateTime(session.startedAt)}
           </div>
           <div className="grid grid-cols-3 gap-2">
-            <Stat label="запросы" value={session.requestCount} />
-            <Stat label="разговоры" value={session.conversationCount} />
+            <Stat label="requests" value={session.requestCount} />
+            <Stat label="conversations" value={session.conversationCount} />
             <Stat
-              label="токены"
+              label="tokens"
               value={`↑${fmtTokens(session.tokens.input)} ↓${fmtTokens(
                 session.tokens.output
               )}`}
@@ -58,14 +58,14 @@ export function SessionsPage() {
   const { loading, error, data } = useAsync(() => fetchSessions(), []);
   return (
     <Chrome>
-      <h1 className="mb-1 text-xl font-bold">Сессии</h1>
+      <h1 className="mb-1 text-xl font-bold">Sessions</h1>
       <p className="mb-4 text-sm text-muted">
-        Каждая сессия — один запуск прокси с записанными запросами ИИ-агента.
+        Each session is one proxy run with an AI agent's recorded requests.
       </p>
       {loading && <Loading />}
       {error && <ErrorBox message={error} />}
       {data && data.length === 0 && (
-        <div className="text-muted">Нет сохранённых сессий.</div>
+        <div className="text-muted">No recorded sessions.</div>
       )}
       {data && data.length > 0 && (
         <div className="grid gap-3 sm:grid-cols-2">

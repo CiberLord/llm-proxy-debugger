@@ -58,8 +58,8 @@ describe("RequestDetailPage", () => {
       </MemoryRouter>
     );
 
-    expect(await screen.findByText("Системный промпт")).toBeInTheDocument();
-    expect(screen.getByText("История переписки")).toBeInTheDocument();
+    expect(await screen.findByText("System prompt")).toBeInTheDocument();
+    expect(screen.getByText("Transcript")).toBeInTheDocument();
     expect(screen.getByText("hello there")).toBeInTheDocument();
     expect(screen.getByText("hi back")).toBeInTheDocument();
 

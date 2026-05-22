@@ -64,7 +64,7 @@ export interface SessionSummary {
   errorCount: number;
 }
 
-/** One LLM request rendered as a step of the agentic loop. */
+/** One LLM request rendered as a step of an agentic loop. */
 export interface OverviewStep {
   requestId: number;
   turn: number;
@@ -79,29 +79,17 @@ export interface OverviewStep {
   ttfbMs?: number;
   tokens: IndexEntry["tokens"];
   toolCalls: { name: string; id?: string }[];
-  spawnsSubagent: boolean;
-  /** Fraction 0..1 of the whole session span — feeds the time gutter. */
+  /** Fraction 0..1 of the whole session span — feeds the time bar. */
   startFrac: number;
   endFrac: number;
 }
 
-/** A conversation (root agent or a subagent) and its steps. */
+/** A conversation and its ordered steps. */
 export interface OverviewNode {
   conversationId: string;
-  parentConversationId?: string;
-  isSubagent: boolean;
-  subagentType?: string;
   detector: string;
-  confidence: "strong" | "medium" | "weak";
   firstUserSnippet: string;
   steps: OverviewStep[];
-  childGroups: ChildGroup[];
-}
-
-/** Children spawned by a conversation, grouped by execution mode. */
-export interface ChildGroup {
-  mode: "parallel" | "sequential";
-  children: OverviewNode[];
 }
 
 export interface SessionDetail {

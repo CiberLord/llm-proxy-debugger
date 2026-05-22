@@ -39,8 +39,9 @@ describe("getSessionDetail", () => {
     const detail = getSessionDetail(dir, 1);
     expect(detail).not.toBeNull();
     expect(detail!.entries).toHaveLength(4);
-    expect(detail!.overview).toHaveLength(1);
-    expect(detail!.overview[0].childGroups[0].mode).toBe("parallel");
+    expect(detail!.overview).toHaveLength(3);
+    expect(detail!.overview[0].conversationId).toBe("root");
+    expect(detail!.overview[0].steps).toHaveLength(2);
   });
 
   it("returns null for an unknown session", () => {

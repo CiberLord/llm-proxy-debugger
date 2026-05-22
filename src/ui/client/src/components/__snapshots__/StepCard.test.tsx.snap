@@ -28,7 +28,7 @@ exports[`StepCard > renders the step with model, tools and a spawn marker 1`] = 
           <span
             class="text-xs text-muted"
           >
-            ход 
+            turn 
             1
           </span>
           <span
@@ -51,21 +51,6 @@ exports[`StepCard > renders the step with model, tools and a spawn marker 1`] = 
               data-slot="chip-label"
             >
               200
-            </span>
-          </span>
-          <span
-            title="запустил субагента"
-          >
-            <span
-              class="chip chip--accent chip--sm chip--soft"
-              data-slot="chip"
-            >
-              <span
-                class="chip__label"
-                data-slot="chip-label"
-              >
-                ⤳ spawn
-              </span>
             </span>
           </span>
         </div>
@@ -116,7 +101,7 @@ exports[`StepCard > renders the step with model, tools and a spawn marker 1`] = 
         </div>
         <div
           class="relative h-1.5 w-full rounded bg-surface-tertiary"
-          title="положение на шкале времени сессии"
+          title="position on the session timeline"
         >
           <div
             class="absolute h-full rounded bg-accent"

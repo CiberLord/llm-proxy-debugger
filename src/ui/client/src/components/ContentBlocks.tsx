@@ -55,7 +55,7 @@ function Block({ block }: { block: ContentBlock }) {
 /** Renders a list of content blocks (text / tool_use / tool_result). */
 export function ContentBlocks({ blocks }: { blocks: ContentBlock[] }) {
   if (blocks.length === 0) {
-    return <div className="text-sm italic text-muted">(пусто)</div>;
+    return <div className="text-sm italic text-muted">(empty)</div>;
   }
   return (
     <div className="flex flex-col gap-3">

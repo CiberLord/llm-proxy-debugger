@@ -18,7 +18,7 @@ export function TimeBar({
   return (
     <div
       className="relative h-1.5 w-full rounded bg-surface-tertiary"
-      title="положение на шкале времени сессии"
+      title="position on the session timeline"
     >
       <div
         className="absolute h-full rounded bg-accent"
@@ -52,14 +52,9 @@ export function StepCard({
         <Card.Content className="flex flex-col gap-2 p-3">
           <div className="flex flex-wrap items-center gap-2">
             <span className="mono text-sm font-bold">#{step.requestId}</span>
-            <span className="text-xs text-muted">ход {step.turn}</span>
+            <span className="text-xs text-muted">turn {step.turn}</span>
             <RouteChip route={step.route} />
             <StatusChip status={step.status} />
-            {step.spawnsSubagent && (
-              <TagChip color="accent" title="запустил субагента">
-                ⤳ spawn
-              </TagChip>
-            )}
             {step.error && <TagChip color="danger">error</TagChip>}
           </div>
 

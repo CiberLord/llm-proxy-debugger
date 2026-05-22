@@ -30,7 +30,7 @@ export function Chrome({
 }
 
 export function Loading() {
-  return <div className="py-12 text-center text-muted">Загрузка…</div>;
+  return <div className="py-12 text-center text-muted">Loading…</div>;
 }
 
 export function ErrorBox({ message }: { message: string }) {

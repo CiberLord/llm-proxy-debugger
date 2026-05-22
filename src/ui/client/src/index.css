@@ -1,11 +1,11 @@
 @import "tailwindcss";
 @import "@heroui/styles";
 
-/* Light theme with a mint accent (HeroUI v3 theming = CSS variables). */
+/* Light theme with a warm terracotta accent (HeroUI v3 theming = CSS variables). */
 :root,
 .light,
 [data-theme="light"] {
-  --accent: oklch(0.66 0.115 168);
+  --accent: oklch(0.62 0.13 47);
 }
 
 html,
