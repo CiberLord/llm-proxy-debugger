@@ -3,13 +3,9 @@
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
-  "bin": {
-    "prox-view": "dist/viewer/index.js"
-  },
   "scripts": {
     "build": "tsup",
-    "start": "tsup && node dist/server/index.js",
-    "view": "tsup && node dist/viewer/index.js",
+    "start": "tsup && node dist/index.js",
     "test": "vitest run",
     "test:watch": "vitest"
   },
