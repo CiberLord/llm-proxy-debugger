@@ -1,14 +1,12 @@
 import type { Detector, DetectionContext, DetectionResult, NormalizedRequest } from "./types";
 import { ClaudeCodeDetector } from "./claude-code";
-import { GenericHeuristicDetector } from "./heuristic";
 
-export { ClaudeCodeDetector, GenericHeuristicDetector };
+export { ClaudeCodeDetector };
 export { conversationIdFor } from "./conversation-id";
 export { RunDetectionContext } from "./context";
 export type { Detector, DetectionContext, DetectionResult, NormalizedRequest };
 
 const DETECTORS: Detector[] = [new ClaudeCodeDetector()];
-const FALLBACK: Detector = new GenericHeuristicDetector();
 
 export function runDetectors(req: NormalizedRequest, ctx: DetectionContext): DetectionResult {
   for (const d of DETECTORS) {
@@ -17,5 +15,12 @@ export function runDetectors(req: NormalizedRequest, ctx: DetectionContext): Det
       if (result) return result;
     }
   }
-  return FALLBACK.detect(req, ctx)!;
+  return {
+    conversation_id: req.conversationId,
+    is_subagent: false,
+    confidence: "weak",
+    signals: [],
+    detector: "unknown",
+    client_app_hint: req.userAgent,
+  };
 }

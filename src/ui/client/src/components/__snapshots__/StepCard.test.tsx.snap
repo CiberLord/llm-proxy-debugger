@@ -26,12 +26,6 @@ exports[`StepCard > renders the step with model, tools and a spawn marker 1`] = 
             1
           </span>
           <span
-            class="text-xs text-muted"
-          >
-            turn 
-            1
-          </span>
-          <span
             class="chip chip--accent chip--sm chip--soft"
             data-slot="chip"
           >
@@ -72,10 +66,6 @@ exports[`StepCard > renders the step with model, tools and a spawn marker 1`] = 
             2.0s
           </span>
           <span>
-            ttfb 
-            300ms
-          </span>
-          <span>
             ↑
             1.2k
              ↓
@@ -98,15 +88,6 @@ exports[`StepCard > renders the step with model, tools and a spawn marker 1`] = 
               </span>
             </span>
           </span>
-        </div>
-        <div
-          class="relative h-1.5 w-full rounded bg-surface-tertiary"
-          title="position on the session timeline"
-        >
-          <div
-            class="absolute h-full rounded bg-accent"
-            style="left: 0%; width: 22%;"
-          />
         </div>
       </div>
     </div>

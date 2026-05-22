@@ -22,9 +22,8 @@ function SessionCard({ session }: { session: SessionSummary }) {
           <div className="text-xs text-muted">
             {fmtDateTime(session.startedAt)}
           </div>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-2">
             <Stat label="requests" value={session.requestCount} />
-            <Stat label="conversations" value={session.conversationCount} />
             <Stat
               label="tokens"
               value={`↑${fmtTokens(session.tokens.input)} ↓${fmtTokens(

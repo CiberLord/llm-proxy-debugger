@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import { conversationIdFor } from "../src/server/detect/conversation-id";
 import { RunDetectionContext } from "../src/server/detect/context";
 import { ClaudeCodeDetector } from "../src/server/detect/claude-code";
-import { GenericHeuristicDetector } from "../src/server/detect/heuristic";
 import { runDetectors } from "../src/server/detect";
 import type { NormalizedRequest } from "../src/server/detect/types";
 
@@ -76,22 +75,8 @@ describe("ClaudeCodeDetector", () => {
   });
 });
 
-describe("GenericHeuristicDetector", () => {
-  it("marks weak subagent when a sibling conv is active", () => {
-    const det = new GenericHeuristicDetector();
-    const ctx = new RunDetectionContext(() => 1000);
-    const a = req({ firstUserText: "a" });
-    const b = req({ firstUserText: "b" });
-    ctx.touchConversation(a.conversationId);
-    ctx.touchConversation(b.conversationId);
-    const r = det.detect(b, ctx);
-    expect(r.is_subagent).toBe(true);
-    expect(r.confidence).toBe("weak");
-  });
-});
-
 describe("runDetectors", () => {
-  it("dispatches to ClaudeCodeDetector on UA match, falls back to heuristic otherwise", () => {
+  it("dispatches to ClaudeCodeDetector on UA match, falls back to unknown otherwise", () => {
     const ctx = new RunDetectionContext(() => 1000);
     const cc = req({ userAgent: "claude-code/1" });
     ctx.touchConversation(cc.conversationId);
@@ -99,6 +84,6 @@ describe("runDetectors", () => {
 
     const other = req({ userAgent: "openai-python" });
     ctx.touchConversation(other.conversationId);
-    expect(runDetectors(other, ctx).detector).toBe("heuristic");
+    expect(runDetectors(other, ctx).detector).toBe("unknown");
   });
 });

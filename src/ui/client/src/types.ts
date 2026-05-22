@@ -102,7 +102,6 @@ export interface SessionSummary {
   startedAt?: string;
   endedAt?: string;
   requestCount: number;
-  conversationCount: number;
   models: string[];
   agents: string[];
   tokens: { input: number; output: number; cacheRead: number; cacheCreation: number };
@@ -111,7 +110,6 @@ export interface SessionSummary {
 
 export interface OverviewStep {
   requestId: number;
-  turn: number;
   route: "anthropic" | "openai";
   model: string;
   modelRemapped: string;
@@ -120,18 +118,8 @@ export interface OverviewStep {
   startedAt?: string;
   endedAt?: string;
   durationMs?: number;
-  ttfbMs?: number;
   tokens: IndexTokenStats;
   toolCalls: { name: string; id?: string }[];
-  startFrac: number;
-  endFrac: number;
-}
-
-export interface OverviewNode {
-  conversationId: string;
-  detector: string;
-  firstUserSnippet: string;
-  steps: OverviewStep[];
 }
 
 export interface SessionDetail {
@@ -139,5 +127,5 @@ export interface SessionDetail {
   startedAt?: string;
   endedAt?: string;
   entries: IndexEntry[];
-  overview: OverviewNode[];
+  steps: OverviewStep[];
 }

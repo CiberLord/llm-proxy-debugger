@@ -189,7 +189,7 @@ function MessageRow({
         <span className="text-sm font-semibold uppercase tracking-wide text-muted">
           {ROLE_LABEL[message.role]}
         </span>
-        {current && <TagChip color="accent">current turn</TagChip>}
+        {current && <TagChip color="accent">latest</TagChip>}
       </summary>
       <div className="border-t border-separator px-3 py-3">
         <ContentBlocks blocks={message.blocks} toolNameById={toolNameById} />
@@ -284,7 +284,7 @@ function NormalizedSection({ view }: { view: NormalizedView }) {
           <details
             open={openSet.has(responseIndex)}
             onToggle={(e) => setOpen(responseIndex, e.currentTarget.open)}
-            className="group rounded-lg border border-green-200 bg-green-50"
+            className="group rounded-lg border border-accent bg-accent-soft"
           >
             <summary className="flex cursor-pointer select-none items-center gap-2 px-3 py-2">
               <span className="text-sm text-muted transition-transform group-open:rotate-90">
@@ -319,7 +319,7 @@ function NormalizedSection({ view }: { view: NormalizedView }) {
             </div>
           </details>
         ) : (
-          <div className="rounded-lg border border-green-200 bg-green-50 p-3">
+          <div className="rounded-lg border border-accent bg-accent-soft p-3">
             <div className="text-sm text-muted">No response.</div>
           </div>
         )}

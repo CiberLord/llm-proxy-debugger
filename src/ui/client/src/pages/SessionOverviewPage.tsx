@@ -3,7 +3,7 @@ import { fetchSession } from "../api";
 import { fmtDateTime } from "../format";
 import { useAsync } from "../lib/useAsync";
 import { Chrome, ErrorBox, Loading } from "../components/Chrome";
-import { OverviewTree } from "../components/OverviewTree";
+import { StepCard } from "../components/StepCard";
 import { Stat } from "../components/ui";
 
 export function SessionOverviewPage() {
@@ -22,21 +22,18 @@ export function SessionOverviewPage() {
         <>
           <div className="mb-6 flex flex-wrap gap-x-8 gap-y-3 rounded-xl border border-border bg-surface p-4">
             <Stat label="requests" value={data.entries.length} />
-            <Stat
-              label="conversations"
-              value={
-                new Set(data.entries.map((e) => e.conversation_id)).size
-              }
-            />
             <Stat label="started" value={fmtDateTime(data.startedAt)} />
             <Stat label="ended" value={fmtDateTime(data.endedAt)} />
           </div>
-          <h1 className="mb-1 text-xl font-bold">Agentic loop</h1>
-          <p className="mb-5 text-sm text-muted">
-            Conversations in chronological order — each one is an agent loop,
-            its requests shown as steps from top to bottom.
-          </p>
-          <OverviewTree sessionId={sessionId} roots={data.overview} />
+          {data.steps.length === 0 ? (
+            <div className="text-sm text-muted">No requests in this session.</div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {data.steps.map((step) => (
+                <StepCard key={step.requestId} sessionId={sessionId} step={step} />
+              ))}
+            </div>
+          )}
         </>
       )}
     </Chrome>

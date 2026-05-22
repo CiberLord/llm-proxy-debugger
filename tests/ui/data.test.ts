@@ -28,20 +28,18 @@ describe("listSessions", () => {
     const s = sessions[0];
     expect(s.id).toBe(1);
     expect(s.requestCount).toBe(4);
-    expect(s.conversationCount).toBe(3);
     expect(s.errorCount).toBe(0);
     expect(s.models).toContain("claude-sonnet-4-6");
   });
 });
 
 describe("getSessionDetail", () => {
-  it("returns entries and the conversation overview", () => {
+  it("returns entries and the flat steps list", () => {
     const detail = getSessionDetail(dir, 1);
     expect(detail).not.toBeNull();
     expect(detail!.entries).toHaveLength(4);
-    expect(detail!.overview).toHaveLength(3);
-    expect(detail!.overview[0].conversationId).toBe("root");
-    expect(detail!.overview[0].steps).toHaveLength(2);
+    expect(detail!.steps).toHaveLength(4);
+    expect(detail!.steps[0].requestId).toBe(1);
   });
 
   it("returns null for an unknown session", () => {

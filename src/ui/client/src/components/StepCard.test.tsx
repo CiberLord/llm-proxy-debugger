@@ -6,7 +6,6 @@ import type { OverviewStep } from "../types";
 
 const step: OverviewStep = {
   requestId: 1,
-  turn: 1,
   route: "anthropic",
   model: "claude-sonnet-4-6",
   modelRemapped: "anthropic/claude-sonnet-4.6",
@@ -14,11 +13,8 @@ const step: OverviewStep = {
   startedAt: "2026-05-22T10:00:00.000Z",
   endedAt: "2026-05-22T10:00:02.000Z",
   durationMs: 2000,
-  ttfbMs: 300,
   tokens: { input: 1200, output: 90 },
   toolCalls: [{ name: "Task", id: "t1" }],
-  startFrac: 0,
-  endFrac: 0.22,
 };
 
 describe("StepCard", () => {

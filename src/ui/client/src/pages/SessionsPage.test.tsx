@@ -10,7 +10,6 @@ const sample: SessionSummary[] = [
     startedAt: "2026-05-22T10:00:00.000Z",
     endedAt: "2026-05-22T10:00:09.000Z",
     requestCount: 4,
-    conversationCount: 3,
     models: ["claude-sonnet-4-6"],
     agents: ["claude-code"],
     tokens: { input: 100, output: 20, cacheRead: 0, cacheCreation: 0 },

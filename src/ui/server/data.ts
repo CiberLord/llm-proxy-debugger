@@ -58,7 +58,6 @@ function summarize(sessionsDir: string, id: number): SessionSummary {
     startedAt: starts[0],
     endedAt: ends[ends.length - 1],
     requestCount: entries.length,
-    conversationCount: new Set(entries.map((e) => e.conversation_id)).size,
     models: uniq(entries.map((e) => e.model_requested)),
     agents: uniq(entries.map((e) => e.client_app_hint ?? e.detection?.detector)),
     tokens,
@@ -89,7 +88,7 @@ export function getSessionDetail(
     startedAt: starts[0],
     endedAt: ends[ends.length - 1],
     entries,
-    overview: buildOverview(entries),
+    steps: buildOverview(entries),
   };
 }
 
