@@ -9,6 +9,8 @@ import {
 } from "./converter/anthropic-to-openai";
 import { openAIToAnthropicResponse } from "./converter/openai-to-anthropic";
 import { createAnthropicStreamConverter } from "./converter/stream";
+import Anthropic, { APIError } from "@anthropic-ai/sdk";
+import { anthropicSdkBaseUrl, serializeAnthropicSSE } from "./anthropic-sdk";
 import { Timings } from "./timings";
 import { runDetectors } from "./detect";
 import type { DetectionResult, NormalizedRequest } from "./detect/types";
@@ -484,6 +486,293 @@ async function handleAnthropic(
   void routeKindForIndex;
 }
 
+/**
+ * Build upstream headers for a direct Anthropic request: forwards the client's
+ * headers but swaps auth to `x-api-key` and guarantees an `anthropic-version`.
+ */
+function buildAnthropicForwardHeaders(
+  reqHeaders: NodeJS.Dict<string | string[]>,
+  apiKey: string
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  let hasVersion = false;
+  for (const [k, v] of Object.entries(reqHeaders)) {
+    if (v === undefined) continue;
+    const key = k.toLowerCase();
+    if (HOP_BY_HOP.has(key)) continue;
+    if (key === "authorization" || key === "x-api-key") continue;
+    if (key === "anthropic-version") hasVersion = true;
+    out[k] = Array.isArray(v) ? v.join(", ") : v;
+  }
+  out["x-api-key"] = apiKey;
+  if (!hasVersion) out["anthropic-version"] = "2023-06-01";
+  out["Content-Type"] = "application/json";
+  return out;
+}
+
+/**
+ * Direct Anthropic Messages API passthrough (provider: "anthropic").
+ *
+ * No format conversion — the client speaks Anthropic and so does the upstream.
+ * The official @anthropic-ai/sdk handles auth headers, the `/v1/messages`
+ * contract, and (for streams) reconstructing the final message for logging.
+ */
+async function handleAnthropicDirect(
+  req: IncomingMessage,
+  res: ServerResponse,
+  sub: string,
+  route: RouteConfig,
+  logger: RequestLogger,
+  session: Session
+): Promise<void> {
+  const timings = new Timings();
+  timings.mark("received_at");
+  const userAgent = (req.headers["user-agent"] as string | undefined) || undefined;
+  const concurrencyAtStart = session.detectionContext.snapshotConcurrency();
+  session.detectionContext.enterRequest();
+
+  let normalized: NormalizedRequest | undefined;
+  let detection: DetectionResult | undefined;
+  let upstreamStatus = 0;
+  let stream = false;
+  let modelRequestedFinal = "";
+  let modelRemappedFinal = "";
+  let assistantBodyForIndex: unknown = null;
+  let errorForIndex: string | undefined;
+  let endpointForIndex = "";
+
+  try {
+    const rawBody = await readBody(req);
+    const incomingText = rawBody.toString("utf8");
+    const incomingJson = parseJSONSafe(incomingText);
+
+    logger.writeRequest({ url: req.url || "", body: incomingJson });
+
+    normalized = normalizeAnthropicRequest(incomingJson, userAgent);
+    session.detectionContext.touchConversation(normalized.conversationId);
+    detection = runDetectors(normalized, session.detectionContext);
+
+    const { path: subPath } = splitPathQuery(sub);
+    const isMessages = subPath.replace(/\/+$/, "") === "/messages";
+    endpointForIndex = subPath;
+
+    const originalBody =
+      incomingJson && typeof incomingJson === "object" && !Array.isArray(incomingJson)
+        ? (incomingJson as Record<string, unknown>)
+        : null;
+    const originalModel =
+      originalBody && typeof originalBody.model === "string"
+        ? originalBody.model
+        : "";
+    const remappedModel = originalModel
+      ? applyModelRemap(originalModel, route.target.modelsRemapping)
+      : originalModel;
+    modelRequestedFinal = originalModel;
+    modelRemappedFinal = remappedModel;
+    stream = Boolean(originalBody && originalBody.stream);
+
+    // Endpoints other than /messages (e.g. /messages/count_tokens, /models):
+    // generic Anthropic→Anthropic passthrough — no SDK, no conversion.
+    if (!isMessages) {
+      const upstreamUrl = joinUrl(route.target.baseUrl, sub);
+      const upstreamHeaders = buildAnthropicForwardHeaders(
+        req.headers,
+        route.target.apiKey
+      );
+      logger.writeRawRequest({
+        url: upstreamUrl,
+        method: req.method || "GET",
+        headers: upstreamHeaders,
+        body: incomingJson ?? null,
+      });
+      timings.mark("upstream_sent_at");
+      const upstream = await fetch(upstreamUrl, {
+        method: req.method || "GET",
+        headers: upstreamHeaders,
+        body: incomingText || undefined,
+      });
+      timings.mark("upstream_first_byte_at");
+      const text = await upstream.text();
+      timings.mark("upstream_done_at");
+      upstreamStatus = upstream.status;
+      const ctype = upstream.headers.get("content-type") || "";
+      logger.writeRawResponse({
+        status: upstream.status,
+        headers: fetchHeadersToObject(upstream.headers),
+        body: text || null,
+      });
+      res.statusCode = upstream.status;
+      res.setHeader("Content-Type", ctype || "application/json");
+      res.end(text);
+      timings.mark("responded_to_client_at");
+      const parsed = text
+        ? ctype.includes("text/event-stream")
+          ? parseSSE(text)
+          : parseJSONSafe(text)
+        : null;
+      logger.writeResponse({ status: upstream.status, body: parsed });
+      assistantBodyForIndex = parsed;
+      return;
+    }
+
+    // /messages → official Anthropic SDK.
+    const client = new Anthropic({
+      apiKey: route.target.apiKey,
+      baseURL: anthropicSdkBaseUrl(route.target.baseUrl),
+      fetch: (input, init) => globalThis.fetch(input, init),
+      maxRetries: 0,
+    });
+
+    // The incoming body is already a valid Anthropic Messages request; only the
+    // model is (optionally) remapped. `stream` is set by the SDK call itself.
+    const params: Record<string, unknown> = { ...(originalBody ?? {}) };
+    if (remappedModel) params.model = remappedModel;
+    delete params.stream;
+
+    // Forward client-supplied Anthropic protocol headers; the SDK injects
+    // x-api-key and a default anthropic-version on its own.
+    const forwardHeaders: Record<string, string> = {};
+    const betaHeader = req.headers["anthropic-beta"];
+    if (typeof betaHeader === "string") forwardHeaders["anthropic-beta"] = betaHeader;
+    const versionHeader = req.headers["anthropic-version"];
+    if (typeof versionHeader === "string")
+      forwardHeaders["anthropic-version"] = versionHeader;
+    const requestOpts =
+      Object.keys(forwardHeaders).length > 0
+        ? { headers: forwardHeaders }
+        : undefined;
+
+    const sdkBaseUrl = anthropicSdkBaseUrl(route.target.baseUrl);
+    logger.writeRawRequest({
+      url: `${sdkBaseUrl}/v1/messages`,
+      method: "POST",
+      headers: {
+        "x-api-key": route.target.apiKey,
+        "anthropic-version": forwardHeaders["anthropic-version"] ?? "2023-06-01",
+        "content-type": "application/json",
+        ...(forwardHeaders["anthropic-beta"]
+          ? { "anthropic-beta": forwardHeaders["anthropic-beta"] }
+          : {}),
+      },
+      body: stream ? { ...params, stream: true } : params,
+    });
+
+    timings.mark("upstream_sent_at");
+
+    try {
+      if (stream) {
+        const sdkStream = client.messages.stream(params as never, requestOpts);
+        let rawAccum = "";
+        let started = false;
+        for await (const event of sdkStream) {
+          if (!started) {
+            started = true;
+            timings.mark("upstream_first_byte_at");
+            res.statusCode = 200;
+            res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+            res.setHeader("Cache-Control", "no-cache");
+            res.setHeader("Connection", "keep-alive");
+          }
+          const chunk = serializeAnthropicSSE(event);
+          rawAccum += chunk;
+          res.write(chunk);
+        }
+        timings.mark("upstream_done_at");
+        res.end();
+        timings.mark("responded_to_client_at");
+
+        const finalMessage = await sdkStream.finalMessage();
+        upstreamStatus = sdkStream.response?.status ?? 200;
+        logger.writeRawResponse({
+          status: upstreamStatus,
+          headers: sdkStream.response
+            ? fetchHeadersToObject(sdkStream.response.headers)
+            : {},
+          body: rawAccum,
+        });
+        logger.writeResponse({ status: upstreamStatus, body: finalMessage });
+        assistantBodyForIndex = finalMessage;
+      } else {
+        const { data: message, response } = await client.messages
+          .create(params as never, requestOpts)
+          .withResponse();
+        timings.mark("upstream_first_byte_at");
+        timings.mark("upstream_done_at");
+        upstreamStatus = response.status;
+        logger.writeRawResponse({
+          status: response.status,
+          headers: fetchHeadersToObject(response.headers),
+          body: JSON.stringify(message),
+        });
+        res.statusCode = 200;
+        res.setHeader("Content-Type", "application/json");
+        res.end(JSON.stringify(message));
+        timings.mark("responded_to_client_at");
+        logger.writeResponse({ status: response.status, body: message });
+        assistantBodyForIndex = message;
+      }
+    } catch (err) {
+      if (err instanceof APIError && typeof err.status === "number") {
+        upstreamStatus = err.status;
+        const errBody: unknown =
+          err.error ?? {
+            type: "error",
+            error: { type: "api_error", message: err.message },
+          };
+        timings.mark("upstream_done_at");
+        logger.writeRawResponse({
+          status: err.status,
+          headers: err.headers ? fetchHeadersToObject(err.headers) : {},
+          body: JSON.stringify(errBody),
+        });
+        if (!res.headersSent) {
+          res.statusCode = err.status;
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify(errBody));
+        } else {
+          res.end();
+        }
+        timings.mark("responded_to_client_at");
+        logger.writeResponse({ status: err.status, body: errBody });
+        assistantBodyForIndex = errBody;
+      } else {
+        throw err;
+      }
+    }
+  } catch (err) {
+    errorForIndex = err instanceof Error ? err.message : String(err);
+    throw err;
+  } finally {
+    session.detectionContext.exitRequest();
+    if (!timings.get("responded_to_client_at"))
+      timings.mark("responded_to_client_at");
+    try {
+      logger.writeMeta(timings.toMeta());
+    } catch {
+      // ignore meta write errors
+    }
+    if (normalized && detection) {
+      finalizeIndex({
+        session,
+        timings,
+        route: "anthropic",
+        normalized,
+        detection,
+        upstreamStatus,
+        stream,
+        endpoint: endpointForIndex || sub,
+        modelRequested: modelRequestedFinal,
+        modelRemapped: modelRemappedFinal,
+        assistantBody: assistantBodyForIndex,
+        responseShape: "anthropic",
+        requestId: logger.requestId,
+        concurrencyAtStart,
+        error: errorForIndex,
+      });
+    }
+  }
+}
+
 async function handleOpenAI(
   req: IncomingMessage,
   res: ServerResponse,
@@ -706,7 +995,15 @@ export function createServer(
             `[session ${logger.sessionId} req ${logger.requestId}] ${req.method} ${url} → anthropic`
           );
         }
-        await handleAnthropic(req, res, a.subPath, config.proxy.anthropic, logger, session);
+        if (config.proxy.anthropic.target.provider === "anthropic") {
+          await handleAnthropicDirect(
+            req, res, a.subPath, config.proxy.anthropic, logger, session
+          );
+        } else {
+          await handleAnthropic(
+            req, res, a.subPath, config.proxy.anthropic, logger, session
+          );
+        }
         return;
       }
       const o = matchRoute(url, openaiPrefix);
