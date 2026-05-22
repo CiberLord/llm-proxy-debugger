@@ -23,6 +23,12 @@ const ROLE_LABEL: Record<ChatMessage["role"], string> = {
   tool: "Tool result",
 };
 
+const ROLE_BORDER: Record<ChatMessage["role"], string> = {
+  user: "border-l-sky-500",
+  assistant: "border-l-indigo-500",
+  tool: "border-l-amber-500",
+};
+
 function Header({ detail }: { detail: RequestDetail }) {
   const { index } = detail;
   const t = index.tokens ?? {};
@@ -145,76 +151,138 @@ function ToolsPanel({ tools }: { tools: ToolDef[] }) {
 function MessageRow({
   message,
   current,
+  open,
+  onToggle,
 }: {
   message: ChatMessage;
   current: boolean;
+  open: boolean;
+  onToggle: (open: boolean) => void;
 }) {
-  const accent =
-    message.role === "assistant"
-      ? "border-l-accent"
-      : message.role === "tool"
-        ? "border-l-separator"
-        : "border-l-border";
   return (
-    <div
-      className={`rounded-lg border border-border border-l-4 ${accent} bg-surface p-3 ${
+    <details
+      open={open}
+      onToggle={(e) => onToggle(e.currentTarget.open)}
+      className={`group rounded-lg border border-border border-l-4 ${ROLE_BORDER[message.role]} bg-surface ${
         current ? "ring-2 ring-accent" : ""
       }`}
     >
-      <div className="mb-2 flex items-center gap-2">
+      <summary className="flex cursor-pointer select-none items-center gap-2 px-3 py-2">
+        <span className="text-xs text-muted transition-transform group-open:rotate-90">
+          ▶
+        </span>
         <span className="text-xs font-semibold uppercase tracking-wide text-muted">
           {ROLE_LABEL[message.role]}
         </span>
         {current && <TagChip color="accent">current turn</TagChip>}
+      </summary>
+      <div className="border-t border-separator px-3 py-3">
+        <ContentBlocks blocks={message.blocks} />
       </div>
-      <ContentBlocks blocks={message.blocks} />
-    </div>
+    </details>
   );
 }
 
 function NormalizedSection({ view }: { view: NormalizedView }) {
   const lastIndex = view.messages.length - 1;
+  const responseIndex = view.messages.length;
+  const [openSet, setOpenSet] = useState<Set<number>>(() => new Set());
+
+  const setOpen = (i: number, isOpen: boolean) =>
+    setOpenSet((prev) => {
+      const next = new Set(prev);
+      if (isOpen) next.add(i);
+      else next.delete(i);
+      return next;
+    });
+
+  const allIndices = view.messages.map((_, i) => i);
+  if (view.response) allIndices.push(responseIndex);
+  const allOpen =
+    allIndices.length > 0 && openSet.size === allIndices.length;
+  const toggleAll = () =>
+    setOpenSet(allOpen ? new Set() : new Set(allIndices));
+
   return (
     <div className="flex flex-col gap-5">
       <SystemPanel blocks={view.system} />
       <ToolsPanel tools={view.tools} />
 
       <div>
-        <SectionTitle>Transcript</SectionTitle>
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted">
+            Transcript
+          </h2>
+          {allIndices.length > 0 && (
+            <button
+              type="button"
+              onClick={toggleAll}
+              className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted hover:text-foreground"
+            >
+              {allOpen ? "Collapse all" : "Expand all"}
+            </button>
+          )}
+        </div>
         <div className="flex flex-col gap-3">
           {view.messages.length === 0 && (
             <div className="text-sm text-muted">No messages.</div>
           )}
           {view.messages.map((m, i) => (
-            <MessageRow key={i} message={m} current={i === lastIndex} />
+            <MessageRow
+              key={i}
+              message={m}
+              current={i === lastIndex}
+              open={openSet.has(i)}
+              onToggle={(o) => setOpen(i, o)}
+            />
           ))}
         </div>
       </div>
 
       <div>
-        <SectionTitle>Model response · current turn</SectionTitle>
-        <div className="rounded-lg border border-accent bg-accent-soft p-3 ring-2 ring-accent">
-          {!view.response && (
-            <div className="text-sm text-muted">No response.</div>
-          )}
-          {view.response?.error && <ErrorBox message={view.response.error} />}
-          {view.response && view.response.blocks.length > 0 && (
-            <ContentBlocks blocks={view.response.blocks} />
-          )}
-          {view.response &&
-            (view.response.stopReason || view.response.usage) && (
-              <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-separator pt-2 text-xs text-muted">
-                {view.response.stopReason && (
-                  <span>stop: {view.response.stopReason}</span>
-                )}
-                {view.response.usage && (
-                  <span className="mono">
-                    usage: {JSON.stringify(view.response.usage)}
-                  </span>
-                )}
-              </div>
-            )}
-        </div>
+        {view.response ? (
+          <details
+            open={openSet.has(responseIndex)}
+            onToggle={(e) => setOpen(responseIndex, e.currentTarget.open)}
+            className="group rounded-lg border border-accent bg-accent-soft ring-2 ring-accent"
+          >
+            <summary className="flex cursor-pointer select-none items-center gap-2 px-3 py-2">
+              <span className="text-xs text-muted transition-transform group-open:rotate-90">
+                ▶
+              </span>
+              <span className="text-xs font-semibold uppercase tracking-wide text-muted">
+                Model response · current turn
+              </span>
+            </summary>
+            <div className="border-t border-separator px-3 py-3">
+              {view.response.error && (
+                <ErrorBox message={view.response.error} />
+              )}
+              {view.response.blocks.length > 0 && (
+                <ContentBlocks blocks={view.response.blocks} />
+              )}
+              {(view.response.stopReason || view.response.usage) && (
+                <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-separator pt-2 text-xs text-muted">
+                  {view.response.stopReason && (
+                    <span>stop: {view.response.stopReason}</span>
+                  )}
+                  {view.response.usage && (
+                    <span className="mono">
+                      usage: {JSON.stringify(view.response.usage)}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+          </details>
+        ) : (
+          <>
+            <SectionTitle>Model response · current turn</SectionTitle>
+            <div className="rounded-lg border border-accent bg-accent-soft p-3 ring-2 ring-accent">
+              <div className="text-sm text-muted">No response.</div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
