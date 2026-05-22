@@ -163,11 +163,14 @@ function MessageRow({
     <details
       open={open}
       onToggle={(e) => onToggle(e.currentTarget.open)}
-      className={`rounded-lg border border-border border-l-4 ${ROLE_BORDER[message.role]} bg-surface ${
+      className={`group rounded-lg border border-border border-l-4 ${ROLE_BORDER[message.role]} bg-surface ${
         current ? "ring-2 ring-accent" : ""
       }`}
     >
       <summary className="flex cursor-pointer select-none items-center gap-2 px-3 py-2">
+        <span className="text-xs text-muted transition-transform group-open:rotate-90">
+          ▶
+        </span>
         <span className="text-xs font-semibold uppercase tracking-wide text-muted">
           {ROLE_LABEL[message.role]}
         </span>
@@ -241,9 +244,12 @@ function NormalizedSection({ view }: { view: NormalizedView }) {
           <details
             open={openSet.has(responseIndex)}
             onToggle={(e) => setOpen(responseIndex, e.currentTarget.open)}
-            className="rounded-lg border border-accent bg-accent-soft ring-2 ring-accent"
+            className="group rounded-lg border border-accent bg-accent-soft ring-2 ring-accent"
           >
             <summary className="flex cursor-pointer select-none items-center gap-2 px-3 py-2">
+              <span className="text-xs text-muted transition-transform group-open:rotate-90">
+                ▶
+              </span>
               <span className="text-xs font-semibold uppercase tracking-wide text-muted">
                 Model response · current turn
               </span>
