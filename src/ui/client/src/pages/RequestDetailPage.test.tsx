@@ -59,7 +59,7 @@ describe("RequestDetailPage", () => {
     );
 
     expect(await screen.findByText("System prompt")).toBeInTheDocument();
-    expect(screen.getByText("Transcript")).toBeInTheDocument();
+    expect(screen.getByText("Messages")).toBeInTheDocument();
     expect(screen.getByText("hello there")).toBeInTheDocument();
     expect(screen.getByText("hi back")).toBeInTheDocument();
 
@@ -83,8 +83,9 @@ describe("RequestDetailPage", () => {
       "details"
     ) as HTMLDetailsElement;
     const responseDetails = screen
-      .getByText("Model response · current turn")
-      .closest("details") as HTMLDetailsElement;
+      .getAllByText("Model response")
+      .map((el) => el.closest("details"))
+      .find((el) => el != null) as HTMLDetailsElement;
 
     expect(messageDetails.open).toBe(false);
     expect(responseDetails.open).toBe(false);

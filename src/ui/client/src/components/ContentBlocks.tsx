@@ -2,7 +2,13 @@ import type { ContentBlock } from "../types";
 import { JsonView } from "./JsonView";
 import { XmlText } from "./XmlText";
 
-function Block({ block }: { block: ContentBlock }) {
+function Block({
+  block,
+  toolNameById,
+}: {
+  block: ContentBlock;
+  toolNameById?: Record<string, string>;
+}) {
   if (block.kind === "text") {
     return (
       <div>
@@ -41,6 +47,11 @@ function Block({ block }: { block: ContentBlock }) {
       <summary className="cursor-pointer text-sm font-semibold">
         ↩ tool_result{" "}
         {block.isError && <span className="text-danger">(error)</span>}
+        {block.toolUseId && toolNameById?.[block.toolUseId] && (
+          <span className="mono ml-2 text-xs text-accent-soft-foreground">
+            {toolNameById[block.toolUseId]}
+          </span>
+        )}
         {block.toolUseId && (
           <span className="mono ml-2 text-xs text-muted">{block.toolUseId}</span>
         )}
@@ -53,14 +64,20 @@ function Block({ block }: { block: ContentBlock }) {
 }
 
 /** Renders a list of content blocks (text / tool_use / tool_result). */
-export function ContentBlocks({ blocks }: { blocks: ContentBlock[] }) {
+export function ContentBlocks({
+  blocks,
+  toolNameById,
+}: {
+  blocks: ContentBlock[];
+  toolNameById?: Record<string, string>;
+}) {
   if (blocks.length === 0) {
     return <div className="text-sm italic text-muted">(empty)</div>;
   }
   return (
     <div className="flex flex-col gap-3">
       {blocks.map((block, i) => (
-        <Block key={i} block={block} />
+        <Block key={i} block={block} toolNameById={toolNameById} />
       ))}
     </div>
   );

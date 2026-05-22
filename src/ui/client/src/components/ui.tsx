@@ -5,16 +5,22 @@ export function Panel({
   title,
   subtitle,
   defaultOpen = true,
+  open,
+  onToggle,
   children,
 }: {
   title: ReactNode;
   subtitle?: ReactNode;
   defaultOpen?: boolean;
+  open?: boolean;
+  onToggle?: (open: boolean) => void;
   children: ReactNode;
 }) {
+  const isControlled = open !== undefined;
   return (
     <details
-      open={defaultOpen}
+      open={isControlled ? open : defaultOpen}
+      onToggle={isControlled && onToggle ? (e) => onToggle(e.currentTarget.open) : undefined}
       className="group rounded-xl border border-border bg-surface shadow-surface"
     >
       <summary className="flex cursor-pointer select-none items-center gap-2 px-4 py-3">

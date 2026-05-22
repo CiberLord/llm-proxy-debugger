@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { fetchRequest } from "../api";
 import { fmtDateTime, fmtDuration } from "../format";
@@ -90,20 +90,27 @@ function ModeToggle({
   );
 }
 
-function SystemPanel({ blocks }: { blocks: SystemBlock[] }) {
+function SystemPanel({
+  blocks,
+  open,
+  onToggle,
+}: {
+  blocks: SystemBlock[];
+  open?: boolean;
+  onToggle?: (open: boolean) => void;
+}) {
   if (blocks.length === 0) return null;
   return (
     <Panel
       title="System prompt"
       subtitle={`${blocks.length} ${blocks.length === 1 ? "block" : "blocks"}`}
+      defaultOpen={false}
+      open={open}
+      onToggle={onToggle}
     >
       <div className="flex flex-col gap-2">
         {blocks.map((b, i) => (
-          <details
-            key={i}
-            open={i === 0}
-            className="rounded-lg border border-separator"
-          >
+          <details key={i} className="rounded-lg border border-separator">
             <summary className="cursor-pointer px-3 py-2 text-sm font-medium">
               Block {i + 1}
               <span className="ml-2 text-xs text-muted">
@@ -120,10 +127,18 @@ function SystemPanel({ blocks }: { blocks: SystemBlock[] }) {
   );
 }
 
-function ToolsPanel({ tools }: { tools: ToolDef[] }) {
+function ToolsPanel({
+  tools,
+  open,
+  onToggle,
+}: {
+  tools: ToolDef[];
+  open?: boolean;
+  onToggle?: (open: boolean) => void;
+}) {
   if (tools.length === 0) return null;
   return (
-    <Panel title="Tools" subtitle={tools.length}>
+    <Panel title="Tools" subtitle={tools.length} defaultOpen={false} open={open} onToggle={onToggle}>
       <div className="flex flex-col gap-2">
         {tools.map((tool, i) => (
           <details key={i} className="rounded-lg border border-separator">
@@ -153,31 +168,31 @@ function MessageRow({
   current,
   open,
   onToggle,
+  toolNameById,
 }: {
   message: ChatMessage;
   current: boolean;
   open: boolean;
   onToggle: (open: boolean) => void;
+  toolNameById?: Record<string, string>;
 }) {
   return (
     <details
       open={open}
       onToggle={(e) => onToggle(e.currentTarget.open)}
-      className={`group rounded-lg border border-border border-l-4 ${ROLE_BORDER[message.role]} bg-surface ${
-        current ? "ring-2 ring-accent" : ""
-      }`}
+      className={`group rounded-lg border border-border border-l-4 ${ROLE_BORDER[message.role]} bg-surface`}
     >
       <summary className="flex cursor-pointer select-none items-center gap-2 px-3 py-2">
-        <span className="text-xs text-muted transition-transform group-open:rotate-90">
+        <span className="text-sm text-muted transition-transform group-open:rotate-90">
           ▶
         </span>
-        <span className="text-xs font-semibold uppercase tracking-wide text-muted">
+        <span className="text-sm font-semibold uppercase tracking-wide text-muted">
           {ROLE_LABEL[message.role]}
         </span>
         {current && <TagChip color="accent">current turn</TagChip>}
       </summary>
       <div className="border-t border-separator px-3 py-3">
-        <ContentBlocks blocks={message.blocks} />
+        <ContentBlocks blocks={message.blocks} toolNameById={toolNameById} />
       </div>
     </details>
   );
@@ -186,6 +201,8 @@ function MessageRow({
 function NormalizedSection({ view }: { view: NormalizedView }) {
   const lastIndex = view.messages.length - 1;
   const responseIndex = view.messages.length;
+  const [systemOpen, setSystemOpen] = useState(false);
+  const [toolsOpen, setToolsOpen] = useState(false);
   const [openSet, setOpenSet] = useState<Set<number>>(() => new Set());
 
   const setOpen = (i: number, isOpen: boolean) =>
@@ -196,33 +213,52 @@ function NormalizedSection({ view }: { view: NormalizedView }) {
       return next;
     });
 
+  const toolNameById = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const msg of view.messages) {
+      for (const block of msg.blocks) {
+        if (block.kind === "tool_use" && block.id) map[block.id] = block.name;
+      }
+    }
+    return map;
+  }, [view.messages]);
+
+  const hasSystem = view.system.length > 0;
+  const hasTools = view.tools.length > 0;
   const allIndices = view.messages.map((_, i) => i);
   if (view.response) allIndices.push(responseIndex);
   const allOpen =
-    allIndices.length > 0 && openSet.size === allIndices.length;
-  const toggleAll = () =>
-    setOpenSet(allOpen ? new Set() : new Set(allIndices));
+    (!hasSystem || systemOpen) &&
+    (!hasTools || toolsOpen) &&
+    allIndices.length > 0 &&
+    openSet.size === allIndices.length;
+
+  const toggleAll = () => {
+    const next = !allOpen;
+    setSystemOpen(next);
+    setToolsOpen(next);
+    setOpenSet(next ? new Set(allIndices) : new Set());
+  };
 
   return (
     <div className="flex flex-col gap-5">
-      <SystemPanel blocks={view.system} />
-      <ToolsPanel tools={view.tools} />
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={toggleAll}
+          className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted hover:text-foreground"
+        >
+          {allOpen ? "Collapse all" : "Expand all"}
+        </button>
+      </div>
+
+      <SystemPanel blocks={view.system} open={systemOpen} onToggle={setSystemOpen} />
+      <ToolsPanel tools={view.tools} open={toolsOpen} onToggle={setToolsOpen} />
 
       <div>
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted">
-            Transcript
-          </h2>
-          {allIndices.length > 0 && (
-            <button
-              type="button"
-              onClick={toggleAll}
-              className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted hover:text-foreground"
-            >
-              {allOpen ? "Collapse all" : "Expand all"}
-            </button>
-          )}
-        </div>
+        <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted">
+          Messages
+        </h2>
         <div className="flex flex-col gap-3">
           {view.messages.length === 0 && (
             <div className="text-sm text-muted">No messages.</div>
@@ -234,24 +270,28 @@ function NormalizedSection({ view }: { view: NormalizedView }) {
               current={i === lastIndex}
               open={openSet.has(i)}
               onToggle={(o) => setOpen(i, o)}
+              toolNameById={toolNameById}
             />
           ))}
         </div>
       </div>
 
       <div>
+        <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted">
+          Model response
+        </h2>
         {view.response ? (
           <details
             open={openSet.has(responseIndex)}
             onToggle={(e) => setOpen(responseIndex, e.currentTarget.open)}
-            className="group rounded-lg border border-accent bg-accent-soft ring-2 ring-accent"
+            className="group rounded-lg border border-green-200 bg-green-50"
           >
             <summary className="flex cursor-pointer select-none items-center gap-2 px-3 py-2">
-              <span className="text-xs text-muted transition-transform group-open:rotate-90">
+              <span className="text-sm text-muted transition-transform group-open:rotate-90">
                 ▶
               </span>
-              <span className="text-xs font-semibold uppercase tracking-wide text-muted">
-                Model response · current turn
+              <span className="text-sm font-semibold uppercase tracking-wide text-muted">
+                Model response
               </span>
             </summary>
             <div className="border-t border-separator px-3 py-3">
@@ -259,7 +299,10 @@ function NormalizedSection({ view }: { view: NormalizedView }) {
                 <ErrorBox message={view.response.error} />
               )}
               {view.response.blocks.length > 0 && (
-                <ContentBlocks blocks={view.response.blocks} />
+                <ContentBlocks
+                  blocks={view.response.blocks}
+                  toolNameById={toolNameById}
+                />
               )}
               {(view.response.stopReason || view.response.usage) && (
                 <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-separator pt-2 text-xs text-muted">
@@ -276,12 +319,9 @@ function NormalizedSection({ view }: { view: NormalizedView }) {
             </div>
           </details>
         ) : (
-          <>
-            <SectionTitle>Model response · current turn</SectionTitle>
-            <div className="rounded-lg border border-accent bg-accent-soft p-3 ring-2 ring-accent">
-              <div className="text-sm text-muted">No response.</div>
-            </div>
-          </>
+          <div className="rounded-lg border border-green-200 bg-green-50 p-3">
+            <div className="text-sm text-muted">No response.</div>
+          </div>
         )}
       </div>
     </div>
