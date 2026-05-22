@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
+import { ThemeToggle } from "./ThemeToggle";
 
 /** Page shell: top bar with brand + breadcrumb, centred content column. */
 export function Chrome({
@@ -22,6 +23,9 @@ export function Chrome({
               {breadcrumb}
             </>
           )}
+          <div className="ml-auto">
+            <ThemeToggle />
+          </div>
         </div>
       </header>
       <main className="mx-auto max-w-6xl px-6 py-6">{children}</main>

@@ -1,10 +1,9 @@
 @import "tailwindcss";
 @import "@heroui/styles";
 
-/* Light theme with a warm terracotta accent (HeroUI v3 theming = CSS variables). */
-:root,
-.light,
-[data-theme="light"] {
+/* Warm terracotta accent applied to every theme (HeroUI v3 theming = CSS
+   variables). Set on :root so it carries into both light and dark themes. */
+:root {
   --accent: oklch(0.62 0.13 47);
 }
 
