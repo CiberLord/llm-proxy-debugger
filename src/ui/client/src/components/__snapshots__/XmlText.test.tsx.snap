@@ -1,0 +1,54 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`XmlText > renders matched tags as a collapsible element 1`] = `
+<div>
+  <div
+    class="mono whitespace-pre-wrap break-words text-[13px] leading-relaxed"
+  >
+    <span>
+      intro
+
+    </span>
+    <details
+      class="xml-el"
+      open=""
+    >
+      <summary
+        class="cursor-pointer"
+      >
+        <span
+          class="font-semibold text-accent"
+        >
+          &lt;rules&gt;
+        </span>
+      </summary>
+      <span>
+        
+  be careful
+
+      </span>
+      <span
+        class="font-semibold text-accent"
+      >
+        &lt;/rules&gt;
+      </span>
+    </details>
+    <span>
+      
+tail
+    </span>
+  </div>
+</div>
+`;
+
+exports[`XmlText > renders plain text without disclosure elements 1`] = `
+<div>
+  <div
+    class="mono whitespace-pre-wrap break-words text-[13px] leading-relaxed"
+  >
+    <span>
+      just plain text
+    </span>
+  </div>
+</div>
+`;

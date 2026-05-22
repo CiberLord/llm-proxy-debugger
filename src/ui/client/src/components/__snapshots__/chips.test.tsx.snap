@@ -1,0 +1,52 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`chips > renders status, route and tag chips 1`] = `
+<div>
+  <span
+    class="chip chip--success chip--sm chip--soft"
+    data-slot="chip"
+  >
+    <span
+      class="chip__label"
+      data-slot="chip-label"
+    >
+      200
+    </span>
+  </span>
+  <span
+    class="chip chip--danger chip--sm chip--soft"
+    data-slot="chip"
+  >
+    <span
+      class="chip__label"
+      data-slot="chip-label"
+    >
+      429
+    </span>
+  </span>
+  <span
+    class="chip chip--accent chip--sm chip--soft"
+    data-slot="chip"
+  >
+    <span
+      class="chip__label"
+      data-slot="chip-label"
+    >
+      anthropic
+    </span>
+  </span>
+  <span>
+    <span
+      class="chip chip--accent chip--sm chip--soft"
+      data-slot="chip"
+    >
+      <span
+        class="chip__label"
+        data-slot="chip-label"
+      >
+        Task
+      </span>
+    </span>
+  </span>
+</div>
+`;
