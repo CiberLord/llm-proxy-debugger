@@ -1,0 +1,130 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`StepCard > renders the step with model, tools and a spawn marker 1`] = `
+<div>
+  <a
+    class="block no-underline"
+    data-discover="true"
+    data-testid="step-card"
+    href="/session/1/request/1"
+  >
+    <div
+      class="card card--default transition hover:shadow-overlay"
+      data-slot="card"
+    >
+      <div
+        class="card__content flex flex-col gap-2 p-3"
+        data-slot="card-content"
+      >
+        <div
+          class="flex flex-wrap items-center gap-2"
+        >
+          <span
+            class="mono text-sm font-bold"
+          >
+            #
+            1
+          </span>
+          <span
+            class="text-xs text-muted"
+          >
+            ход 
+            1
+          </span>
+          <span
+            class="chip chip--accent chip--sm chip--soft"
+            data-slot="chip"
+          >
+            <span
+              class="chip__label"
+              data-slot="chip-label"
+            >
+              anthropic
+            </span>
+          </span>
+          <span
+            class="chip chip--success chip--sm chip--soft"
+            data-slot="chip"
+          >
+            <span
+              class="chip__label"
+              data-slot="chip-label"
+            >
+              200
+            </span>
+          </span>
+          <span
+            title="запустил субагента"
+          >
+            <span
+              class="chip chip--accent chip--sm chip--soft"
+              data-slot="chip"
+            >
+              <span
+                class="chip__label"
+                data-slot="chip-label"
+              >
+                ⤳ spawn
+              </span>
+            </span>
+          </span>
+        </div>
+        <div
+          class="mono text-sm"
+        >
+          claude-sonnet-4-6
+          <span
+            class="text-muted"
+          >
+             → 
+            anthropic/claude-sonnet-4.6
+          </span>
+        </div>
+        <div
+          class="flex flex-wrap items-center gap-3 text-xs text-muted"
+        >
+          <span>
+            2.0s
+          </span>
+          <span>
+            ttfb 
+            300ms
+          </span>
+          <span>
+            ↑
+            1.2k
+             ↓
+            90
+          </span>
+        </div>
+        <div
+          class="flex flex-wrap gap-1"
+        >
+          <span>
+            <span
+              class="chip chip--default chip--sm chip--soft"
+              data-slot="chip"
+            >
+              <span
+                class="chip__label"
+                data-slot="chip-label"
+              >
+                Task
+              </span>
+            </span>
+          </span>
+        </div>
+        <div
+          class="relative h-1.5 w-full rounded bg-surface-tertiary"
+          title="положение на шкале времени сессии"
+        >
+          <div
+            class="absolute h-full rounded bg-accent"
+            style="left: 0%; width: 22%;"
+          />
+        </div>
+      </div>
+    </div>
+  </a>
+</div>
+`;

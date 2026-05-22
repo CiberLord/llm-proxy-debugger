@@ -1,0 +1,42 @@
+@import "tailwindcss";
+@import "@heroui/styles";
+
+/* Light theme with a mint accent (HeroUI v3 theming = CSS variables). */
+:root,
+.light,
+[data-theme="light"] {
+  --accent: oklch(0.66 0.115 168);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+/* Custom disclosure markers — hide the native triangle. */
+summary {
+  list-style: none;
+}
+summary::-webkit-details-marker {
+  display: none;
+}
+
+/* Nested XML element — subtle structure guide. */
+.xml-el {
+  margin-left: 0.5rem;
+  border-left: 1px solid var(--separator);
+  padding-left: 0.5rem;
+}
