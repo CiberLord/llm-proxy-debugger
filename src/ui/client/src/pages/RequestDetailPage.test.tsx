@@ -67,4 +67,34 @@ describe("RequestDetailPage", () => {
     expect(await screen.findByText("request.json")).toBeInTheDocument();
     expect(screen.getByText("raw_response.json")).toBeInTheDocument();
   });
+
+  it("collapses transcript messages by default and toggles via Expand all", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true, json: async () => detail }))
+    );
+    render(
+      <MemoryRouter initialEntries={["/session/1/request/1"]}>
+        <App />
+      </MemoryRouter>
+    );
+
+    const messageDetails = (await screen.findByText("User")).closest(
+      "details"
+    ) as HTMLDetailsElement;
+    const responseDetails = screen
+      .getByText("Model response · current turn")
+      .closest("details") as HTMLDetailsElement;
+
+    expect(messageDetails.open).toBe(false);
+    expect(responseDetails.open).toBe(false);
+
+    fireEvent.click(screen.getByText("Expand all"));
+    expect(messageDetails.open).toBe(true);
+    expect(responseDetails.open).toBe(true);
+
+    fireEvent.click(screen.getByText("Collapse all"));
+    expect(messageDetails.open).toBe(false);
+    expect(responseDetails.open).toBe(false);
+  });
 });
