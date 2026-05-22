@@ -1,6 +1,7 @@
 node_modules
 sessions
 dist
+screenshots
 .env
 .env.local
 .env*.local
