@@ -23,13 +23,10 @@ const ROLE_LABEL: Record<ChatMessage["role"], string> = {
   tool: "Tool result",
 };
 
-const ROLE_STYLE: Record<
-  ChatMessage["role"],
-  { dot: string; borderL: string }
-> = {
-  user: { dot: "bg-sky-500", borderL: "border-l-sky-500" },
-  assistant: { dot: "bg-indigo-500", borderL: "border-l-indigo-500" },
-  tool: { dot: "bg-amber-500", borderL: "border-l-amber-500" },
+const ROLE_BORDER: Record<ChatMessage["role"], string> = {
+  user: "border-l-sky-500",
+  assistant: "border-l-indigo-500",
+  tool: "border-l-amber-500",
 };
 
 function Header({ detail }: { detail: RequestDetail }) {
@@ -162,17 +159,15 @@ function MessageRow({
   open: boolean;
   onToggle: (open: boolean) => void;
 }) {
-  const style = ROLE_STYLE[message.role];
   return (
     <details
       open={open}
       onToggle={(e) => onToggle(e.currentTarget.open)}
-      className={`rounded-lg border border-border border-l-4 ${style.borderL} bg-surface ${
+      className={`rounded-lg border border-border border-l-4 ${ROLE_BORDER[message.role]} bg-surface ${
         current ? "ring-2 ring-accent" : ""
       }`}
     >
       <summary className="flex cursor-pointer select-none items-center gap-2 px-3 py-2">
-        <span className={`h-2 w-2 shrink-0 rounded-full ${style.dot}`} />
         <span className="text-xs font-semibold uppercase tracking-wide text-muted">
           {ROLE_LABEL[message.role]}
         </span>
@@ -249,7 +244,6 @@ function NormalizedSection({ view }: { view: NormalizedView }) {
             className="rounded-lg border border-accent bg-accent-soft ring-2 ring-accent"
           >
             <summary className="flex cursor-pointer select-none items-center gap-2 px-3 py-2">
-              <span className="h-2 w-2 shrink-0 rounded-full bg-indigo-500" />
               <span className="text-xs font-semibold uppercase tracking-wide text-muted">
                 Model response · current turn
               </span>
