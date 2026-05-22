@@ -30,7 +30,7 @@ for (const key of required) {
 
 // `anthropic` talks directly to the Anthropic Messages API (no format
 // conversion); `openai-compatible` converts to/from the OpenAI Chat shape.
-const anthropicProvider: Provider =
+const provider: Provider =
   process.env.ANTHROPIC_TARGET_PROVIDER === 'anthropic'
     ? 'anthropic'
     : 'openai-compatible';
@@ -63,10 +63,10 @@ const config: Config = {
       },
       target: {
         baseUrl: process.env.ANTHROPIC_TARGET_BASE_URL ?? 'https://api.eliza.yandex.net/openrouter/v1',
-        provider: anthropicProvider,
+        provider: provider,
         apiKey: process.env.ANTHROPIC_API_KEY!,
         modelsRemapping:
-          anthropicProvider === 'anthropic' ? {} : anthropicOpenRouterRemapping,
+          provider === 'anthropic' ? {} : anthropicOpenRouterRemapping,
       },
     },
 
