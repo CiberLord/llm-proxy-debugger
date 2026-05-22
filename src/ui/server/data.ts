@@ -1,11 +1,38 @@
+import * as fs from "node:fs";
 import * as path from "node:path";
 import { readIndex } from "../../server/index/writer";
-import { listRuns, readRequestFile } from "../../viewer/runs";
 import type { IndexEntry } from "../../server/index/types";
 import type { MetaJson } from "../../server/timings";
 import { buildOverview } from "./overview";
 import { normalizeRequest, normalizeResponse } from "./normalize";
 import type { RequestDetail, SessionDetail, SessionSummary } from "./types";
+
+/** Numeric session-run directories under the sessions root, ascending. */
+function listRuns(sessionsDir: string): number[] {
+  if (!fs.existsSync(sessionsDir)) return [];
+  const out: number[] = [];
+  for (const e of fs.readdirSync(sessionsDir, { withFileTypes: true })) {
+    if (!e.isDirectory()) continue;
+    const n = Number(e.name);
+    if (Number.isFinite(n)) out.push(n);
+  }
+  return out.sort((a, b) => a - b);
+}
+
+/** Read and parse one stored file of a request, or null when absent/invalid. */
+function readRequestFile(
+  sessionDir: string,
+  requestId: number,
+  fileName: string
+): unknown | null {
+  const p = path.join(sessionDir, "requests", String(requestId), fileName);
+  if (!fs.existsSync(p)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(p, "utf8"));
+  } catch {
+    return null;
+  }
+}
 
 function uniq(values: Array<string | undefined>): string[] {
   return [...new Set(values.filter((v): v is string => !!v))];
