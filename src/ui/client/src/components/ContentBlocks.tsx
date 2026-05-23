@@ -1,4 +1,5 @@
 import type { ContentBlock } from "../types";
+import { CopyButton } from "./CopyButton";
 import { JsonView } from "./JsonView";
 import { XmlText } from "./XmlText";
 
@@ -11,26 +12,28 @@ function Block({
 }) {
   if (block.kind === "text") {
     return (
-      <div>
+      <div className="relative">
         {block.thinking && (
           <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">
             thinking
           </div>
         )}
         <XmlText text={block.text} />
+        <CopyButton text={block.text} />
       </div>
     );
   }
 
   if (block.kind === "tool_use") {
     return (
-      <div className="rounded-lg border border-border bg-accent-soft p-3">
+      <div className="relative rounded-lg border border-border bg-accent-soft p-3">
         <div className="mb-2 flex flex-wrap items-center gap-2 text-sm font-semibold">
           <span>🔧 tool_use</span>
           <span className="mono text-accent-soft-foreground">{block.name}</span>
           {block.id && <span className="mono text-xs text-muted">{block.id}</span>}
         </div>
         <JsonView value={block.input} defaultDepth={3} />
+        <CopyButton text={JSON.stringify(block.input, null, 2)} />
       </div>
     );
   }
@@ -38,7 +41,7 @@ function Block({
   return (
     <details
       open
-      className={`rounded-lg border p-3 ${
+      className={`relative rounded-lg border p-3 ${
         block.isError
           ? "border-danger bg-danger-soft"
           : "border-border bg-surface-secondary"
@@ -59,6 +62,7 @@ function Block({
       <div className="mt-2">
         <XmlText text={block.content} />
       </div>
+      <CopyButton text={block.content} />
     </details>
   );
 }

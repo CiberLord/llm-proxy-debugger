@@ -12,6 +12,7 @@ import type {
 } from "../types";
 import { Chrome, ErrorBox, Loading } from "../components/Chrome";
 import { ContentBlocks } from "../components/ContentBlocks";
+import { CopyButton } from "../components/CopyButton";
 import { JsonView } from "../components/JsonView";
 import { XmlText } from "../components/XmlText";
 import { RouteChip, StatusChip, TagChip } from "../components/chips";
@@ -110,7 +111,7 @@ function SystemPanel({
     >
       <div className="flex flex-col gap-2">
         {blocks.map((b, i) => (
-          <details key={i} className="rounded-lg border border-separator">
+          <details key={i} className="relative rounded-lg border border-separator">
             <summary className="cursor-pointer px-3 py-2 text-sm font-medium">
               Block {i + 1}
               <span className="ml-2 text-xs text-muted">
@@ -120,6 +121,7 @@ function SystemPanel({
             <div className="border-t border-separator px-3 py-2">
               <XmlText text={b.text} />
             </div>
+            <CopyButton text={b.text} />
           </details>
         ))}
       </div>
@@ -141,7 +143,7 @@ function ToolsPanel({
     <Panel title="Tools" subtitle={tools.length} defaultOpen={false} open={open} onToggle={onToggle}>
       <div className="flex flex-col gap-2">
         {tools.map((tool, i) => (
-          <details key={i} className="rounded-lg border border-separator">
+          <details key={i} className="relative rounded-lg border border-separator">
             <summary className="cursor-pointer px-3 py-2">
               <span className="mono text-sm font-semibold text-accent-soft-foreground">
                 {tool.name}
@@ -156,6 +158,13 @@ function ToolsPanel({
                 </div>
               )}
             </div>
+            <CopyButton
+              text={JSON.stringify(
+                { name: tool.name, description: tool.description, schema: tool.schema },
+                null,
+                2,
+              )}
+            />
           </details>
         ))}
       </div>
